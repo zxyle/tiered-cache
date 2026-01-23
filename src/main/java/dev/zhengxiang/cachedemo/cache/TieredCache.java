@@ -126,66 +126,54 @@ public class TieredCache implements org.springframework.cache.Cache {
     public <T> T get(@NonNull Object key, @NonNull Callable<T> valueLoader) {
         String keyStr = key.toString();
 
-        // 1. 快速路径：检查 L1 缓存
-        Object value = localCache.getIfPresent(keyStr);
-        if (value != null) {
-            log.debug("L1 命中: cache={}, key={}", name, keyStr);
-            return unwrapNullValue((T) value);
-        }
-
-        // 2. 检查 L2 缓存
-        ValueWrapper wrapper = remoteCache.get(keyStr);
-        if (wrapper != null) {
-            log.debug("L2 命中: cache={}, key={}", name, keyStr);
-            Object remoteValue = wrapper.get();
-            // 回填本地缓存
-            if (remoteValue != null) {
-                localCache.put(keyStr, remoteValue);
+        // 使用 Caffeine 的 get(key, mappingFunction) 方法
+        // 内置并发控制：同一个 key 只有一个线程执行加载逻辑，其他线程等待结果
+        // 这样可以防止多个线程同时穿透到 L2/数据源
+        Object value = localCache.get(keyStr, k -> {
+            // 1. 检查 L2 缓存
+            ValueWrapper wrapper = remoteCache.get(keyStr);
+            if (wrapper != null) {
+                log.debug("L2 命中: cache={}, key={}", name, keyStr);
+                return wrapper.get();
             }
-            return unwrapNullValue((T) remoteValue);
-        }
 
-        // 3. 都未命中，使用分布式锁防止缓存击穿
-        return loadWithLock(keyStr, valueLoader);
+            // 2. L2 也未命中，使用分布式锁加载数据
+            log.debug("L1/L2 都未命中，加载数据: cache={}, key={}", name, keyStr);
+            return loadWithLockInternal(keyStr, valueLoader);
+        });
+
+        return unwrapNullValue((T) value);
     }
 
     /**
-     * 使用分布式锁加载数据，防止缓存击穿
-     * 使用看门狗机制，不指定 leaseTime，Redisson 自动续期
+     * 使用分布式锁加载数据（内部方法，返回原始值供 Caffeine 缓存）
      */
-    @SuppressWarnings("unchecked")
-    private <T> T loadWithLock(String keyStr, Callable<T> valueLoader) {
+    private <T> Object loadWithLockInternal(String keyStr, Callable<T> valueLoader) {
         String lockKey = properties.getCachePrefix() + LOCK_PREFIX + name + ":" + keyStr;
         RLock lock = redissonClient.getLock(lockKey);
 
         boolean acquired;
         try {
-            // 使用看门狗机制：不指定 leaseTime，Redisson 自动续期（默认30秒，每10秒续期）
             acquired = lock.tryLock(properties.getRemote().getLockWaitTimeMs(), TimeUnit.MILLISECONDS);
 
             if (acquired) {
                 try {
-                    // Double Check：获取锁后再次检查缓存
+                    // Double Check：获取锁后再次检查 L2 缓存
                     ValueWrapper wrapper = remoteCache.get(keyStr);
                     if (wrapper != null) {
                         log.debug("获取锁后 L2 命中: cache={}, key={}", name, keyStr);
-                        Object remoteValue = wrapper.get();
-                        if (remoteValue != null) {
-                            localCache.put(keyStr, remoteValue);
-                        }
-                        return unwrapNullValue((T) remoteValue);
+                        return wrapper.get();
                     }
 
                     // 真正加载数据
                     log.debug("加载数据: cache={}, key={}", name, keyStr);
                     T result = valueLoader.call();
 
-                    // 缓存结果（包括null值，解决缓存穿透）
+                    // 缓存结果到 L2（包括null值，解决缓存穿透）
                     Object toCache = (result == null) ? NULL_VALUE : result;
                     remoteCache.put(keyStr, toCache);
-                    localCache.put(keyStr, toCache);
 
-                    return result;
+                    return toCache;
                 } finally {
                     if (lock.isHeldByCurrentThread()) {
                         lock.unlock();
@@ -193,7 +181,7 @@ public class TieredCache implements org.springframework.cache.Cache {
                 }
             } else {
                 // 获取锁失败，根据策略决定行为
-                return handleLockFailure(keyStr, valueLoader);
+                return handleLockFailureInternal(keyStr, valueLoader);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -206,18 +194,13 @@ public class TieredCache implements org.springframework.cache.Cache {
     }
 
     /**
-     * 处理获取锁失败的情况
+     * 处理获取锁失败的情况（内部方法）
      */
-    @SuppressWarnings("unchecked")
-    private <T> T handleLockFailure(String keyStr, Callable<T> valueLoader) throws Exception {
+    private <T> Object handleLockFailureInternal(String keyStr, Callable<T> valueLoader) throws Exception {
         // 最后尝试读一次 L2（可能其他线程已加载完成）
         ValueWrapper wrapper = remoteCache.get(keyStr);
         if (wrapper != null) {
-            Object remoteValue = wrapper.get();
-            if (remoteValue != null) {
-                localCache.put(keyStr, remoteValue);
-            }
-            return unwrapNullValue((T) remoteValue);
+            return wrapper.get();
         }
 
         // 根据策略决定降级行为
@@ -226,7 +209,8 @@ public class TieredCache implements org.springframework.cache.Cache {
             throw new CacheLockAcquireException("当前访问人数过多，请稍后重试");
         } else {
             log.warn("获取锁失败，降级查询数据源: cache={}, key={}", name, keyStr);
-            return valueLoader.call();
+            T result = valueLoader.call();
+            return (result == null) ? NULL_VALUE : result;
         }
     }
 
