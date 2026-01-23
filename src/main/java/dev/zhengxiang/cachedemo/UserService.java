@@ -2,6 +2,8 @@ package dev.zhengxiang.cachedemo;
 
 import dev.zhengxiang.cachedemo.cache.CacheManagers;
 import dev.zhengxiang.cachedemo.cache.CacheNames;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -15,9 +17,40 @@ public class UserService {
     @Cacheable(cacheNames = CacheNames.USER_INFO, key = "'user_' + #id")
     public User getUser(String id) {
         User user = new User();
+        user.setId(id);
         user.setName("zhengxiang");
+        user.setEmail("zhengxiang@example.com");
         System.out.println("查询数据库 - 用户ID: " + id + " (二级缓存)");
         return user;
+    }
+
+    /**
+     * 更新用户信息 - 使用 @CachePut 更新缓存
+     * 每次调用都会执行方法，并将返回值更新到缓存中
+     */
+    @CachePut(cacheNames = CacheNames.USER_INFO, key = "'user_' + #user.id")
+    public User updateUser(User user) {
+        // 模拟更新数据库
+        System.out.println("更新数据库 - 用户ID: " + user.getId() + ", 用户名: " + user.getName() + " (更新缓存)");
+        return user;
+    }
+
+    /**
+     * 删除用户 - 使用 @CacheEvict 清除缓存
+     * 删除用户后清除对应的缓存数据
+     */
+    @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "'user_' + #id")
+    public void deleteUser(String id) {
+        // 模拟删除数据库记录
+        System.out.println("删除数据库 - 用户ID: " + id + " (清除缓存)");
+    }
+
+    /**
+     * 批量删除所有用户缓存 - 使用 allEntries = true
+     */
+    @CacheEvict(cacheNames = CacheNames.USER_INFO, allEntries = true)
+    public void clearAllUserCache() {
+        System.out.println("清除所有用户缓存");
     }
 
     /**
