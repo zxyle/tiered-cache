@@ -258,15 +258,12 @@ public class TieredCache implements org.springframework.cache.Cache {
 
         long ttlMs;
         if (isNullValue) {
-            // null 值使用较短的 TTL
+            // null 值使用固定的较短 TTL，无需随机偏移
             ttlMs = properties.getRemote().getNullValueTtl().toMillis();
         } else {
-            // 正常值使用配置的 remoteTtl
-            ttlMs = strategy.getRemoteTtl().toMillis();
+            // 正常值使用配置的 remoteTtl，添加随机偏移防雪崩（±10%）
+            ttlMs = randomizeTtl(strategy.getRemoteTtl().toMillis());
         }
-
-        // 添加随机偏移防雪崩（±10%）
-        ttlMs = randomizeTtl(ttlMs);
 
         mapCache.put(key, value, ttlMs, TimeUnit.MILLISECONDS);
         log.debug("写入 L2: cache={}, key={}, isNull={}, ttl={}ms", name, key, isNullValue, ttlMs);
@@ -336,8 +333,7 @@ public class TieredCache implements org.springframework.cache.Cache {
         RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name);
         long ttlMs = isNullValue
                 ? properties.getRemote().getNullValueTtl().toMillis()
-                : strategy.getRemoteTtl().toMillis();
-        ttlMs = randomizeTtl(ttlMs);
+                : randomizeTtl(strategy.getRemoteTtl().toMillis());
 
         // putIfAbsent 是原子操作，返回已存在的值或 null
         Object existing = mapCache.putIfAbsent(keyStr, toCache, ttlMs, TimeUnit.MILLISECONDS);
