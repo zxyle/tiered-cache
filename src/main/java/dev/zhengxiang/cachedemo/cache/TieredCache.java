@@ -350,17 +350,17 @@ public class TieredCache implements org.springframework.cache.Cache {
     public void clear() {
         log.debug("清空缓存: cache={}, mode={}", name, strategy.getClearMode());
 
-        // 1. 清空本机 L1
-        localCache.invalidateAll();
-
-        // 2. 广播通知所有节点清空 L1
-        publishClearMessage();
-
-        // 3. 根据策略决定是否清除 L2
+        // 1. 根据策略决定是否清除 L2, SAFE 模式：L2 依赖 TTL 自然过期
         if (strategy.getClearMode() == ClearMode.FULL) {
             clearRemoteCache();
         }
-        // SAFE 模式：L2 依赖 TTL 自然过期
+
+        // 2. 清空本机 L1
+        localCache.invalidateAll();
+
+        // 3. 广播通知所有节点清空 L1
+        publishClearMessage();
+
     }
 
     /**
@@ -370,15 +370,23 @@ public class TieredCache implements org.springframework.cache.Cache {
         // Redisson Spring Cache 使用 cacheName 作为 Hash key
         log.info("清除远程缓存: cacheName={}", name);
 
+        // TODO 待定 使用同步 还是异步
+
         // 使用 UNLINK 异步删除整个 Hash key，避免 bigkey 阻塞
-        redissonClient.getKeys().unlinkAsync(name)
-                .whenComplete((count, e) -> {
-                    if (e != null) {
-                        log.error("清除远程缓存失败: cacheName={}", name, e);
-                    } else {
-                        log.info("清除远程缓存完成: cacheName={}, deleted={}", name, count > 0);
-                    }
-                });
+        // redissonClient.getKeys().unlinkAsync(name)
+        //         .whenComplete((count, e) -> {
+        //             if (e != null) {
+        //                 log.error("清除远程缓存失败: cacheName={}", name, e);
+        //             } else {
+        //                 log.info("清除远程缓存完成: cacheName={}, deleted={}", name, count > 0);
+        //             }
+        //         });
+
+        // 注意：这里最好用同步等待 unlink 完成，或者用 del
+        // 如果必须异步，要接受短暂的“数据复活”风险
+        // 建议：对于 clear 操作，宁可慢一点也要保证一致性
+        redissonClient.getKeys().unlink(name);
+        log.info("远程缓存已清理: {}", name);
     }
 
     @Override
