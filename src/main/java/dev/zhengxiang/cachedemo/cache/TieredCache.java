@@ -7,6 +7,7 @@ import dev.zhengxiang.cachedemo.cache.TieredCacheProperties.FallbackStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RMapCache;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.springframework.cache.support.SimpleValueWrapper;
 import org.springframework.lang.NonNull;
@@ -40,6 +41,12 @@ public class TieredCache implements org.springframework.cache.Cache {
      * 分布式锁前缀
      */
     private static final String LOCK_PREFIX = "lock:";
+
+    /**
+     * 缓存 Redis 是否支持 UNLINK 命令（版本 >= 4.0）
+     * 使用 volatile 确保多线程可见性，所有 TieredCache 实例共享
+     */
+    private static volatile Boolean supportsUnlink = null;
 
     private final String name;
     private final Cache<Object, Object> localCache;           // L1: Caffeine
@@ -396,29 +403,93 @@ public class TieredCache implements org.springframework.cache.Cache {
     }
 
     /**
-     * 清除远程缓存（直接删除整个 Hash key）
+     * 清除远程缓存（根据 Redis 版本选择 UNLINK 或 DEL）
+     * <p>
+     * Redis 4.0+ 支持 UNLINK 命令，它是异步删除，不会阻塞主线程
+     * Redis 4.0 以下只能使用 DEL 命令，同步删除
      */
     private void clearRemoteCache() {
-        // Redisson Spring Cache 使用 cacheName 作为 Hash key
         log.info("清除远程缓存: cacheName={}", name);
 
-        // TODO 待定 使用同步 还是异步
+        // 首次调用时检测 Redis 版本（双重检查锁，只检测一次）
+        if (supportsUnlink == null) {
+            synchronized (TieredCache.class) {
+                if (supportsUnlink == null) {
+                    supportsUnlink = detectUnlinkSupport();
+                }
+            }
+        }
 
-        // 使用 UNLINK 异步删除整个 Hash key，避免 bigkey 阻塞
-        // redissonClient.getKeys().unlinkAsync(name)
-        //         .whenComplete((count, e) -> {
-        //             if (e != null) {
-        //                 log.error("清除远程缓存失败: cacheName={}", name, e);
-        //             } else {
-        //                 log.info("清除远程缓存完成: cacheName={}, deleted={}", name, count > 0);
-        //             }
-        //         });
+        if (supportsUnlink) {
+            // Redis 4.0+ 使用 UNLINK 异步删除，避免 bigkey 阻塞
+            redissonClient.getKeys().unlink(name);
+            log.info("远程缓存已清理(UNLINK): {}", name);
+        } else {
+            // Redis 4.0 以下使用 DEL 同步删除
+            redissonClient.getKeys().delete(name);
+            log.info("远程缓存已清理(DEL): {}", name);
+        }
+    }
 
-        // 注意：这里最好用同步等待 unlink 完成，或者用 del
-        // 如果必须异步，要接受短暂的“数据复活”风险
-        // 建议：对于 clear 操作，宁可慢一点也要保证一致性
-        redissonClient.getKeys().unlink(name);
-        log.info("远程缓存已清理: {}", name);
+    /**
+     * 检测 Redis 是否支持 UNLINK 命令（版本 >= 4.0）
+     *
+     * @return true 如果支持 UNLINK，false 如果不支持
+     */
+    private boolean detectUnlinkSupport() {
+        try {
+            // 通过 Lua 脚本执行 INFO server 命令获取版本信息
+            String serverInfo = redissonClient.getScript().eval(
+                    RScript.Mode.READ_ONLY,
+                    "return redis.call('INFO', 'server')",
+                    RScript.ReturnType.VALUE
+            );
+
+            // 解析 redis_version:x.x.x
+            int majorVersion = parseRedisMajorVersion(serverInfo);
+            boolean supports = majorVersion >= 4;
+
+            log.info("Redis 版本检测完成: majorVersion={}, supportsUnlink={}", majorVersion, supports);
+            return supports;
+        } catch (Exception e) {
+            log.warn("检测 Redis 版本失败，默认使用 DEL 命令: {}", e.getMessage());
+            // 检测失败时降级使用 DEL（更安全，兼容所有版本）
+            return false;
+        }
+    }
+
+    /**
+     * 从 INFO server 输出中解析 Redis 主版本号
+     *
+     * @param serverInfo INFO server 命令的输出
+     * @return Redis 主版本号，解析失败返回 0
+     */
+    private int parseRedisMajorVersion(String serverInfo) {
+        if (serverInfo == null || serverInfo.isEmpty()) {
+            return 0;
+        }
+
+        // INFO server 输出格式示例：
+        // # Server
+        // redis_version:7.0.5
+        // redis_git_sha1:00000000
+        // ...
+        for (String line : serverInfo.split("\n")) {
+            line = line.trim();
+            if (line.startsWith("redis_version:")) {
+                String version = line.substring("redis_version:".length()).trim();
+                // 解析主版本号（第一个 . 之前的数字）
+                int dotIndex = version.indexOf('.');
+                String majorStr = dotIndex > 0 ? version.substring(0, dotIndex) : version;
+                try {
+                    return Integer.parseInt(majorStr);
+                } catch (NumberFormatException e) {
+                    log.warn("解析 Redis 版本号失败: {}", version);
+                    return 0;
+                }
+            }
+        }
+        return 0;
     }
 
     @Override
