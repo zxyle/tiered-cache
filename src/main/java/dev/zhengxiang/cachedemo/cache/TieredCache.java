@@ -64,7 +64,7 @@ public class TieredCache implements org.springframework.cache.Cache {
 
         log.info("创建二级缓存: name={}, fallback={}, clearMode={}, localTtl={}, remoteTtl={}",
                 name, strategy.getFallbackStrategy(), strategy.getClearMode(),
-                strategy.getLocalTtl(), strategy.getTtl());
+                strategy.getLocalTtl(), strategy.getRemoteTtl());
     }
 
     @NonNull

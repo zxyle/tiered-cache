@@ -99,12 +99,12 @@ public class TieredCacheProperties {
     @Data
     public static class CacheStrategy {
         /**
-         * 远程缓存 TTL
+         * 远程缓存（Redis）TTL
          */
-        private Duration ttl;
+        private Duration remoteTtl;
 
         /**
-         * 本地缓存 TTL（可选，覆盖全局配置）
+         * 本地缓存（Caffeine）TTL（可选，覆盖全局配置）
          */
         private Duration localTtl;
 
@@ -166,7 +166,7 @@ public class TieredCacheProperties {
 
         if (strategy != null) {
             // 使用配置的值
-            effective.setTtl(strategy.getTtl());
+            effective.setRemoteTtl(strategy.getRemoteTtl());
             effective.setLocalTtl(strategy.getLocalTtl());
             effective.setLocalMaxSize(strategy.getLocalMaxSize());
             effective.setFallbackStrategy(strategy.getFallbackStrategy());
@@ -174,8 +174,8 @@ public class TieredCacheProperties {
         }
 
         // 填充默认值
-        if (effective.getTtl() == null) {
-            effective.setTtl(remote.getDefaultTtl());
+        if (effective.getRemoteTtl() == null) {
+            effective.setRemoteTtl(remote.getDefaultTtl());
         }
         if (effective.getLocalTtl() == null) {
             effective.setLocalTtl(local.getExpireAfterWrite());

@@ -124,7 +124,7 @@ public class CacheConfig {
         for (Map.Entry<String, CacheStrategy> entry : properties.getCaches().entrySet()) {
             String cacheName = entry.getKey();
             CacheStrategy strategy = entry.getValue();
-            Duration ttl = strategy.getTtl() != null ? strategy.getTtl() : properties.getRemote().getDefaultTtl();
+            Duration ttl = strategy.getRemoteTtl() != null ? strategy.getRemoteTtl() : properties.getRemote().getDefaultTtl();
 
             // 添加随机偏移防雪崩
             long ttlMs = randomizeTtl(ttl.toMillis(), properties.getRemote().getTtlRandomFactor());

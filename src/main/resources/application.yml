@@ -44,27 +44,27 @@ cache:
       # 用户信息：高一致性场景
       # 获取锁失败直接报错，clear 时清除 L1+L2
       user_info:
-        ttl: 24h                        # Redis TTL
-        local-ttl: 5m                   # 本地缓存 TTL
+        remote-ttl: 24h                 # Redis 缓存过期时间
+        local-ttl: 5m                   # 本地缓存过期时间
         fallback-strategy: THROW        # 获取锁失败抛异常
         clear-mode: FULL                # clear 时清除 L1+L2
       
       # 系统配置：高一致性，但允许更长本地缓存
       sys_config:
-        ttl: 1h
+        remote-ttl: 1h
         local-ttl: 10m
         fallback-strategy: THROW
         clear-mode: FULL
       
       # 短期缓存：默认策略
       short_lived:
-        ttl: 5m
+        remote-ttl: 5m
         local-ttl: 1m
       
       # 商品列表示例：高可用场景
       # 获取锁失败降级查DB，clear 时仅清除 L1
       # product_list:
-      #   ttl: 30m
+      #   remote-ttl: 30m
       #   local-ttl: 2m
       #   fallback-strategy: FALLBACK   # 获取锁失败降级查DB
       #   clear-mode: SAFE              # clear 时仅清除 L1
@@ -72,7 +72,7 @@ cache:
       
       # 热点数据示例：高可用，短 TTL
       # hot_data:
-      #   ttl: 10m
+      #   remote-ttl: 10m
       #   local-ttl: 30s
       #   fallback-strategy: FALLBACK
       #   clear-mode: SAFE

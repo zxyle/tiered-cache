@@ -123,7 +123,7 @@ public class TieredCacheManager implements CacheManager {
 
         log.info("创建二级缓存: name={}, localMaxSize={}, localTtl={}, remoteTtl={}, fallback={}, clearMode={}",
                 name, strategy.getLocalMaxSize(), strategy.getLocalTtl(),
-                strategy.getTtl(), strategy.getFallbackStrategy(), strategy.getClearMode());
+                strategy.getRemoteTtl(), strategy.getFallbackStrategy(), strategy.getClearMode());
 
         return new TieredCache(name, localCache, remoteCache, messagePublisher, redissonClient, properties);
     }
