@@ -49,6 +49,13 @@
             <artifactId>redisson-spring-boot-starter</artifactId>
             <version>3.25.0</version>
         </dependency>
+        <!-- Redisson底层依赖netty, Netty 会尝试加载 MacOS 原生的 DNS 解析库以获得更好的性能 -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <classifier>osx-aarch_64</classifier>
+            <scope>runtime</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>
