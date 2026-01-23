@@ -326,19 +326,19 @@ public class TieredCache implements org.springframework.cache.Cache {
     }
 
     /**
-     * 清除远程缓存（使用 SCAN 批量删除，避免阻塞 Redis）
+     * 清除远程缓存（直接删除整个 Hash key）
      */
     private void clearRemoteCache() {
-        String pattern = properties.getCachePrefix() + name + ":*";
-        log.info("清除远程缓存: pattern={}", pattern);
+        // Redisson Spring Cache 使用 cacheName 作为 Hash key
+        log.info("清除远程缓存: cacheName={}", name);
 
-        // 使用 Redisson 的 deleteByPattern（内部使用 SCAN + UNLINK）
-        redissonClient.getKeys().deleteByPatternAsync(pattern)
+        // 使用 UNLINK 异步删除整个 Hash key，避免 bigkey 阻塞
+        redissonClient.getKeys().unlinkAsync(name)
                 .whenComplete((count, e) -> {
                     if (e != null) {
-                        log.error("清除远程缓存失败: pattern={}", pattern, e);
+                        log.error("清除远程缓存失败: cacheName={}", name, e);
                     } else {
-                        log.info("清除远程缓存完成: pattern={}, count={}", pattern, count);
+                        log.info("清除远程缓存完成: cacheName={}, deleted={}", name, count > 0);
                     }
                 });
     }
