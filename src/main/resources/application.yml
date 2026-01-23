@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: cache-demo
+
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 2000ms
+
+# 缓存日志级别
+logging:
+  level:
+    org.springframework.cache: DEBUG
+    dev.zhengxiang.cachedemo.cache: DEBUG
+
+# 二级缓存配置
+cache:
+  tiered:
+    # 缓存 key 前缀
+    cache-prefix: "app:cache:"
+    
+    # 全局默认策略
+    default-fallback-strategy: THROW    # THROW=抛异常(高一致性), FALLBACK=降级查DB(高可用)
+    default-clear-mode: SAFE            # SAFE=仅清L1(安全), FULL=清L1+L2
+    
+    # 本地缓存默认配置
+    local:
+      maximum-size: 1000                # 默认最大缓存条数
+      expire-after-write: 5m            # 默认本地缓存过期时间
+    
+    # 远程缓存默认配置
+    remote:
+      default-ttl: 1h                   # 默认 Redis TTL
+      null-value-ttl: 1m                # 空值缓存 TTL（防穿透）
+      ttl-random-factor: 0.1            # TTL 随机因子（防雪崩，0.1 表示 ±10%）
+      lock-wait-time-ms: 500            # 分布式锁等待时间（毫秒）
+      cache-topic-prefix: "app:cache:topic:"  # 缓存失效广播 Topic 前缀
+    
+    # 按 cacheName 配置不同策略（一致性 vs 可用性）
+    caches:
+      # 用户信息：高一致性场景
+      # 获取锁失败直接报错，clear 时清除 L1+L2
+      user_info:
+        ttl: 24h                        # Redis TTL
+        local-ttl: 5m                   # 本地缓存 TTL
+        fallback-strategy: THROW        # 获取锁失败抛异常
+        clear-mode: FULL                # clear 时清除 L1+L2
+      
+      # 系统配置：高一致性，但允许更长本地缓存
+      sys_config:
+        ttl: 1h
+        local-ttl: 10m
+        fallback-strategy: THROW
+        clear-mode: FULL
+      
+      # 短期缓存：默认策略
+      short_lived:
+        ttl: 5m
+        local-ttl: 1m
+      
+      # 商品列表示例：高可用场景
+      # 获取锁失败降级查DB，clear 时仅清除 L1
+      # product_list:
+      #   ttl: 30m
+      #   local-ttl: 2m
+      #   fallback-strategy: FALLBACK   # 获取锁失败降级查DB
+      #   clear-mode: SAFE              # clear 时仅清除 L1
+      #   local-max-size: 5000          # 更大的本地缓存
+      
+      # 热点数据示例：高可用，短 TTL
+      # hot_data:
+      #   ttl: 10m
+      #   local-ttl: 30s
+      #   fallback-strategy: FALLBACK
+      #   clear-mode: SAFE
+      #   local-max-size: 10000
