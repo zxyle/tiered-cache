@@ -233,7 +233,6 @@ public class TieredCache implements org.springframework.cache.Cache {
     /**
      * 解包空值占位符
      */
-    @SuppressWarnings("unchecked")
     private <T> T unwrapNullValue(T value) {
         if (NULL_VALUE.equals(value)) {
             return null;
