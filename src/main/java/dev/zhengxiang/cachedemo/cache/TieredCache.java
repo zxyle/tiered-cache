@@ -6,6 +6,7 @@ import dev.zhengxiang.cachedemo.cache.TieredCacheProperties.ClearMode;
 import dev.zhengxiang.cachedemo.cache.TieredCacheProperties.FallbackStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RedissonClient;
 import org.springframework.cache.support.SimpleValueWrapper;
 import org.springframework.lang.NonNull;
@@ -31,8 +32,9 @@ public class TieredCache implements org.springframework.cache.Cache {
 
     /**
      * 空值占位符，用于解决缓存穿透问题
+     * 使用唯一字符串常量，确保序列化/反序列化安全
      */
-    public static final String NULL_VALUE = "@@CACHE_NULL@@";
+    private static final String NULL_VALUE = "@@TIERED_CACHE_NULL_VALUE@@";
 
     /**
      * 分布式锁前缀
@@ -62,9 +64,10 @@ public class TieredCache implements org.springframework.cache.Cache {
         // 根据 cacheName 获取对应策略
         this.strategy = properties.getEffectiveStrategy(name);
 
-        log.info("创建二级缓存: name={}, fallback={}, clearMode={}, localTtl={}, remoteTtl={}",
+        log.info("创建二级缓存: name={}, fallback={}, clearMode={}, localTtl={}, remoteTtl={}, nullValueTtl={}",
                 name, strategy.getFallbackStrategy(), strategy.getClearMode(),
-                strategy.getLocalTtl(), strategy.getRemoteTtl());
+                strategy.getLocalTtl(), strategy.getRemoteTtl(),
+                properties.getRemote().getNullValueTtl());
     }
 
     @NonNull
@@ -171,7 +174,7 @@ public class TieredCache implements org.springframework.cache.Cache {
 
                     // 缓存结果到 L2（包括null值，解决缓存穿透）
                     Object toCache = (result == null) ? NULL_VALUE : result;
-                    remoteCache.put(keyStr, toCache);
+                    putToRemoteCache(keyStr, toCache, result == null);
 
                     return toCache;
                 } finally {
@@ -195,6 +198,8 @@ public class TieredCache implements org.springframework.cache.Cache {
 
     /**
      * 处理获取锁失败的情况（内部方法）
+     * <p>
+     * FALLBACK 策略下会查询数据源并写回 L2，避免其他 JVM 实例重复打 DB
      */
     private <T> Object handleLockFailureInternal(String keyStr, Callable<T> valueLoader) throws Exception {
         // 最后尝试读一次 L2（可能其他线程已加载完成）
@@ -210,7 +215,13 @@ public class TieredCache implements org.springframework.cache.Cache {
         } else {
             log.warn("获取锁失败，降级查询数据源: cache={}, key={}", name, keyStr);
             T result = valueLoader.call();
-            return (result == null) ? NULL_VALUE : result;
+            Object toCache = (result == null) ? NULL_VALUE : result;
+
+            // 写回 L2 缓存，避免其他 JVM 实例重复查询数据源
+            // 注意：这里没有锁保护，可能会覆盖其他线程的写入，但在 FALLBACK 场景下可接受
+            putToRemoteCache(keyStr, toCache, result == null);
+
+            return toCache;
         }
     }
 
@@ -222,6 +233,48 @@ public class TieredCache implements org.springframework.cache.Cache {
             return null;
         }
         return value;
+    }
+
+    /**
+     * 写入远程缓存
+     * <p>
+     * 统一使用 RMapCache 进行写入，确保存储方式一致：
+     * - null 值使用较短的 TTL（nullValueTtl），防止缓存穿透攻击长时间污染缓存
+     * - 正常值使用配置的 remoteTtl
+     *
+     * @param key         缓存键
+     * @param value       缓存值
+     * @param isNullValue 是否为 null 值占位符
+     */
+    private void putToRemoteCache(String key, Object value, boolean isNullValue) {
+        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name);
+
+        long ttlMs;
+        if (isNullValue) {
+            // null 值使用较短的 TTL
+            ttlMs = properties.getRemote().getNullValueTtl().toMillis();
+        } else {
+            // 正常值使用配置的 remoteTtl
+            ttlMs = strategy.getRemoteTtl().toMillis();
+        }
+
+        // 添加随机偏移防雪崩（±10%）
+        ttlMs = randomizeTtl(ttlMs);
+
+        mapCache.put(key, value, ttlMs, TimeUnit.MILLISECONDS);
+        log.debug("写入 L2: cache={}, key={}, isNull={}, ttl={}ms", name, key, isNullValue, ttlMs);
+    }
+
+    /**
+     * 为 TTL 添加随机偏移，防止缓存雪崩
+     */
+    private long randomizeTtl(long baseTtlMs) {
+        double randomFactor = properties.getRemote().getTtlRandomFactor();
+        if (baseTtlMs <= 0 || randomFactor <= 0) {
+            return baseTtlMs;
+        }
+        long offset = (long) (baseTtlMs * randomFactor);
+        return baseTtlMs + java.util.concurrent.ThreadLocalRandom.current().nextLong(-offset, offset + 1);
     }
 
     /**
@@ -241,26 +294,26 @@ public class TieredCache implements org.springframework.cache.Cache {
     @Override
     public void put(@NonNull Object key, Object value) {
         String keyStr = key.toString();
-        if (value == null) {
-            // 不缓存 null，如需缓存 null 应使用 putWithNullHandle
-            return;
-        }
-        log.debug("写入缓存: cache={}, key={}", name, keyStr);
+        boolean isNullValue = (value == null);
+        Object toCache = isNullValue ? NULL_VALUE : value;
+
+        log.debug("写入缓存: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
 
         // 1. 写入 L2 (保证数据源先更新)
-        remoteCache.put(keyStr, value);
+        putToRemoteCache(keyStr, toCache, isNullValue);
         // 2. 写入 L1 (Caffeine)
-        localCache.put(keyStr, value);
+        localCache.put(keyStr, toCache);
         // 3. 通知其他实例清除本地缓存（防止其他实例读到旧值）
         publishInvalidateMessage(keyStr);
     }
 
     /**
-     * 原子性的"如果不存在则写入"操作
+     * 如果不存在则写入
      * <p>
-     * 使用分布式锁保证 check-then-act 的原子性，防止高并发下多个线程同时写入。
+     * 使用 Redisson 的原子操作 {@code RMapCache.putIfAbsent()}，无需分布式锁。
      * <p>
-     * 降级策略：获取锁失败时，再次检查缓存，若仍不存在则直接写入（允许覆盖）。
+     * 注意：Spring Cache 的 putIfAbsent 是"尽力而为"的弱语义，不保证跨 L1/L2 的强一致性。
+     * 本实现保证 L2（Redis）层面的原子性，L1 采用"后写入覆盖"策略。
      *
      * @param key   缓存键
      * @param value 缓存值
@@ -269,39 +322,34 @@ public class TieredCache implements org.springframework.cache.Cache {
     @Override
     public ValueWrapper putIfAbsent(@NonNull Object key, Object value) {
         String keyStr = key.toString();
-        String lockKey = properties.getCachePrefix() + LOCK_PREFIX + name + ":absent:" + keyStr;
-        RLock lock = redissonClient.getLock(lockKey);
+        boolean isNullValue = (value == null);
+        Object toCache = isNullValue ? NULL_VALUE : value;
 
-        try {
-            // 使用分布式锁保证原子性
-            if (lock.tryLock(properties.getRemote().getLockWaitTimeMs(), TimeUnit.MILLISECONDS)) {
-                try {
-                    // Double-check
-                    ValueWrapper existingValue = get(key);
-                    if (existingValue != null) {
-                        return existingValue;
-                    }
-                    put(key, value);
-                    return null;
-                } finally {
-                    if (lock.isHeldByCurrentThread()) {
-                        lock.unlock();
-                    }
-                }
-            } else {
-                // 获取锁失败，再次检查缓存
-                ValueWrapper existingValue = get(key);
-                if (existingValue != null) {
-                    return existingValue;
-                }
-                // 降级：直接写入（允许覆盖）
-                put(key, value);
-                return null;
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("putIfAbsent interrupted", e);
+        // 使用 Redisson 原子操作写入 L2
+        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name);
+        long ttlMs = isNullValue
+                ? properties.getRemote().getNullValueTtl().toMillis()
+                : strategy.getRemoteTtl().toMillis();
+        ttlMs = randomizeTtl(ttlMs);
+
+        // putIfAbsent 是原子操作，返回已存在的值或 null
+        Object existing = mapCache.putIfAbsent(keyStr, toCache, ttlMs, TimeUnit.MILLISECONDS);
+
+        if (existing != null) {
+            // key 已存在，返回已存在的值
+            log.debug("putIfAbsent L2 已存在: cache={}, key={}", name, keyStr);
+            // 回填 L1
+            localCache.put(keyStr, existing);
+            return wrapValue(existing);
         }
+
+        // key 不存在，写入成功，同步到 L1
+        log.debug("putIfAbsent 写入成功: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
+        localCache.put(keyStr, toCache);
+        // 通知其他实例清除本地缓存
+        publishInvalidateMessage(keyStr);
+
+        return null;
     }
 
     @Override

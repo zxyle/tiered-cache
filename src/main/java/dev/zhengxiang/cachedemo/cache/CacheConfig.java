@@ -138,7 +138,9 @@ public class CacheConfig {
         setDefaultTtlIfAbsent(configMap, CacheNames.DISTRIBUTED_LOCK, properties, Duration.ofMinutes(30));
         setDefaultTtlIfAbsent(configMap, CacheNames.SESSION_CACHE, properties, Duration.ofHours(2));
 
-        RedissonSpringCacheManager cacheManager = new RedissonSpringCacheManager(redissonClient, configMap);
+        // 创建支持动态 TTL 的缓存管理器
+        DynamicTtlRedissonCacheManager cacheManager = new DynamicTtlRedissonCacheManager(
+                redissonClient, configMap, properties);
         // 使用支持 Java 8 时间类型的 Codec
         cacheManager.setCodec(createSafeCodec());
         // 允许存储null值占位符，用于解决缓存穿透
