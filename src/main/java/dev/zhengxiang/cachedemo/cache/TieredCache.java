@@ -263,12 +263,12 @@ public class TieredCache implements org.springframework.cache.Cache {
         }
         log.debug("写入缓存: cache={}, key={}", name, keyStr);
 
-        // 1. 先通知其他实例清除本地缓存（防止其他实例读到旧值）
-        publishInvalidateMessage(keyStr);
-        // 2. 写入 L2 (Redis)
+        // 1. 写入 L2 (保证数据源先更新)
         remoteCache.put(keyStr, value);
-        // 3. 写入 L1 (Caffeine)
+        // 2. 写入 L1 (Caffeine)
         localCache.put(keyStr, value);
+        // 3. 通知其他实例清除本地缓存（防止其他实例读到旧值）
+        publishInvalidateMessage(keyStr);
     }
 
     /**
