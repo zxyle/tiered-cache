@@ -264,22 +264,61 @@ public class TieredCache implements org.springframework.cache.Cache {
         }
         log.debug("写入缓存: cache={}, key={}", name, keyStr);
 
-        // 写入 L2 (Redis)
-        remoteCache.put(keyStr, value);
-        // 写入 L1 (Caffeine)
-        localCache.put(keyStr, value);
-        // 通知其他实例清除本地缓存
+        // 1. 先通知其他实例清除本地缓存（防止其他实例读到旧值）
         publishInvalidateMessage(keyStr);
+        // 2. 写入 L2 (Redis)
+        remoteCache.put(keyStr, value);
+        // 3. 写入 L1 (Caffeine)
+        localCache.put(keyStr, value);
     }
 
+    /**
+     * 原子性的"如果不存在则写入"操作
+     * <p>
+     * 使用分布式锁保证 check-then-act 的原子性，防止高并发下多个线程同时写入。
+     * <p>
+     * 降级策略：获取锁失败时，再次检查缓存，若仍不存在则直接写入（允许覆盖）。
+     *
+     * @param key   缓存键
+     * @param value 缓存值
+     * @return 如果 key 已存在，返回已存在的值；如果 key 不存在且写入成功，返回 null
+     */
     @Override
     public ValueWrapper putIfAbsent(@NonNull Object key, Object value) {
-        ValueWrapper existingValue = get(key);
-        if (existingValue != null) {
-            return existingValue;
+        String keyStr = key.toString();
+        String lockKey = properties.getCachePrefix() + LOCK_PREFIX + name + ":absent:" + keyStr;
+        RLock lock = redissonClient.getLock(lockKey);
+
+        try {
+            // 使用分布式锁保证原子性
+            if (lock.tryLock(properties.getRemote().getLockWaitTimeMs(), TimeUnit.MILLISECONDS)) {
+                try {
+                    // Double-check
+                    ValueWrapper existingValue = get(key);
+                    if (existingValue != null) {
+                        return existingValue;
+                    }
+                    put(key, value);
+                    return null;
+                } finally {
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
+                }
+            } else {
+                // 获取锁失败，再次检查缓存
+                ValueWrapper existingValue = get(key);
+                if (existingValue != null) {
+                    return existingValue;
+                }
+                // 降级：直接写入（允许覆盖）
+                put(key, value);
+                return null;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("putIfAbsent interrupted", e);
         }
-        put(key, value);
-        return null;
     }
 
     @Override
@@ -287,11 +326,11 @@ public class TieredCache implements org.springframework.cache.Cache {
         String keyStr = key.toString();
         log.debug("删除缓存: cache={}, key={}", name, keyStr);
 
-        // 清除本地缓存
-        localCache.invalidate(keyStr);
-        // 清除 Redis 缓存
+        // 1. 先清除 Redis 缓存（防止其他线程从 L2 读到旧值回填 L1）
         remoteCache.evict(keyStr);
-        // 通知其他实例清除本地缓存
+        // 2. 再清除本地缓存
+        localCache.invalidate(keyStr);
+        // 3. 通知其他实例清除本地缓存
         publishInvalidateMessage(keyStr);
     }
 
