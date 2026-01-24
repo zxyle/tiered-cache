@@ -3,6 +3,11 @@ package dev.zhengxiang.cachedemo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 用户控制器
+ * <p>
+ * 提供用户 CRUD 接口，演示不同缓存策略的使用
+ */
 @RestController
 @RequestMapping("/user")
 public class UserController {

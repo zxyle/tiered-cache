@@ -19,12 +19,13 @@ import java.util.concurrent.TimeUnit;
  * 二级缓存实现
  * <p>
  * 查询顺序：L1(本地Caffeine) -> L2(Redis) -> 数据源
- * 写入顺序：写入L1和L2，并通知其他实例失效L1
+ * 写入顺序：先写入L2(Redis)，再写入L1(Caffeine)，最后通知其他实例失效L1
+ * 删除顺序：先删除L2(Redis)，再删除L1(Caffeine)，最后通知其他实例失效L1
  * <p>
  * 特性：
  * 1. 缓存穿透：缓存空值（NullValue占位符）
  * 2. 缓存击穿：分布式锁保护热点key（看门狗自动续期）
- * 3. 缓存雪崩：过期时间添加随机偏移
+ * 3. 缓存雪崩：过期时间添加随机偏移（±10%）
  * 4. 可配置降级策略：THROW（保护DB）或 FALLBACK（保证可用性）
  * 5. 可配置clear模式：SAFE（仅清L1）或 FULL（清L1+L2）
  */
@@ -77,18 +78,37 @@ public class TieredCache implements org.springframework.cache.Cache {
                 properties.getRemote().getNullValueTtl());
     }
 
+    /**
+     * 获取缓存名称
+     *
+     * @return 缓存名称
+     */
     @NonNull
     @Override
     public String getName() {
         return this.name;
     }
 
+    /**
+     * 获取底层原生缓存对象
+     *
+     * @return 当前 TieredCache 实例
+     */
     @NonNull
     @Override
     public Object getNativeCache() {
         return this;
     }
 
+    /**
+     * 从缓存中获取值
+     * <p>
+     * 查询顺序：L1(Caffeine) -> L2(Redis)
+     * 命中 L2 时会回填 L1
+     *
+     * @param key 缓存键
+     * @return 包装后的缓存值，未命中返回 null
+     */
     @Override
     public ValueWrapper get(@NonNull Object key) {
         String keyStr = key.toString();
@@ -116,6 +136,15 @@ public class TieredCache implements org.springframework.cache.Cache {
         return null;
     }
 
+    /**
+     * 从缓存中获取指定类型的值
+     *
+     * @param key  缓存键
+     * @param type 期望的值类型
+     * @param <T>  值类型泛型
+     * @return 缓存值，未命中或类型不匹配时返回 null
+     * @throws IllegalStateException 如果缓存值与期望类型不匹配
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <T> T get(@NonNull Object key, Class<T> type) {
@@ -131,6 +160,21 @@ public class TieredCache implements org.springframework.cache.Cache {
         return unwrapNullValue((T) value);
     }
 
+    /**
+     * 从缓存获取值，如果不存在则通过 valueLoader 加载
+     * <p>
+     * 核心方法，实现了完整的缓存查询和加载逻辑：
+     * 1. 使用 Caffeine 的并发控制，同一 key 只有一个线程执行加载
+     * 2. 查询顺序：L1 -> L2 -> valueLoader
+     * 3. 加载时使用分布式锁防止缓存击穿
+     * 4. 支持缓存空值防止缓存穿透
+     *
+     * @param key         缓存键
+     * @param valueLoader 值加载器，缓存未命中时调用
+     * @param <T>         值类型泛型
+     * @return 缓存值或加载的值
+     * @throws ValueRetrievalException 如果加载过程发生异常
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <T> T get(@NonNull Object key, @NonNull Callable<T> valueLoader) {
@@ -295,6 +339,15 @@ public class TieredCache implements org.springframework.cache.Cache {
         return new SimpleValueWrapper(value);
     }
 
+    /**
+     * 写入缓存
+     * <p>
+     * 写入顺序：L2(Redis) -> L1(Caffeine) -> 广播通知
+     * 支持缓存 null 值（使用空值占位符）
+     *
+     * @param key   缓存键
+     * @param value 缓存值，可以为 null
+     */
     @Override
     public void put(@NonNull Object key, Object value) {
         String keyStr = key.toString();
@@ -355,6 +408,14 @@ public class TieredCache implements org.springframework.cache.Cache {
         return null;
     }
 
+    /**
+     * 删除指定 key 的缓存
+     * <p>
+     * 删除顺序：L2(Redis) -> L1(Caffeine) -> 广播通知
+     * 先删 L2 防止其他线程从 L2 读到旧值回填 L1
+     *
+     * @param key 缓存键
+     */
     @Override
     public void evict(@NonNull Object key) {
         String keyStr = key.toString();
@@ -368,6 +429,12 @@ public class TieredCache implements org.springframework.cache.Cache {
         publishInvalidateMessage(keyStr);
     }
 
+    /**
+     * 如果缓存存在则删除
+     *
+     * @param key 缓存键
+     * @return 如果缓存存在并被删除返回 true，否则返回 false
+     */
     @Override
     public boolean evictIfPresent(@NonNull Object key) {
         String keyStr = key.toString();
@@ -381,6 +448,15 @@ public class TieredCache implements org.springframework.cache.Cache {
         return existed;
     }
 
+    /**
+     * 清空整个缓存
+     * <p>
+     * 根据 clearMode 配置决定行为：
+     * - SAFE 模式：仅清空 L1，L2 依赖 TTL 自然过期
+     * - FULL 模式：清空 L1 + L2（使用 UNLINK/DEL 删除整个缓存 key）
+     * <p>
+     * 最后广播通知所有节点清空本地缓存
+     */
     @Override
     public void clear() {
         log.debug("清空缓存: cache={}, mode={}", name, strategy.getClearMode());
@@ -488,6 +564,13 @@ public class TieredCache implements org.springframework.cache.Cache {
         return 0;
     }
 
+    /**
+     * 使缓存失效
+     * <p>
+     * 等同于 clear()，返回 true 表示操作已执行
+     *
+     * @return 始终返回 true
+     */
     @Override
     public boolean invalidate() {
         clear();
@@ -495,7 +578,9 @@ public class TieredCache implements org.springframework.cache.Cache {
     }
 
     /**
-     * 清除本地缓存（被其他实例通知时调用）
+     * 清除本地缓存中指定 key（被其他实例通知时调用）
+     *
+     * @param key 缓存键
      */
     public void evictLocal(Object key) {
         String keyStr = key.toString();
@@ -511,12 +596,20 @@ public class TieredCache implements org.springframework.cache.Cache {
         localCache.invalidateAll();
     }
 
+    /**
+     * 发布缓存失效消息（通知其他实例清除指定 key 的本地缓存）
+     *
+     * @param key 缓存键
+     */
     private void publishInvalidateMessage(Object key) {
         if (messagePublisher != null) {
             messagePublisher.publishEvict(name, key);
         }
     }
 
+    /**
+     * 发布清空缓存消息（通知其他实例清空整个本地缓存）
+     */
     private void publishClearMessage() {
         if (messagePublisher != null) {
             messagePublisher.publishClear(name);

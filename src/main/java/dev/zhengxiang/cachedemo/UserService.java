@@ -7,6 +7,14 @@ import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+/**
+ * 用户服务类
+ * <p>
+ * 演示不同缓存策略的使用：
+ * - 二级缓存（默认）：getUser, updateUser, deleteUser
+ * - 仅 Redis 缓存：acquireLock, getSessionInfo
+ * - 仅本地缓存：heavyCalculation
+ */
 @Service
 public class UserService {
 

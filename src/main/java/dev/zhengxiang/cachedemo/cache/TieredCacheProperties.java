@@ -149,7 +149,8 @@ public class TieredCacheProperties {
         SAFE,
 
         /**
-         * 完全模式：清除 L1 + L2（使用 SCAN 批量删除）
+         * 完全模式：清除 L1 + L2
+         * L2 使用 UNLINK（Redis 4.0+）或 DEL 命令删除整个缓存 key
          */
         FULL
     }

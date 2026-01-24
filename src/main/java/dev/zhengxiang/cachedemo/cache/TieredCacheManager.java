@@ -25,13 +25,39 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class TieredCacheManager implements CacheManager {
 
-    private final CacheManager remoteCacheManager;           // L2: Redis CacheManager
+    /**
+     * 远程缓存管理器（L2: Redis）
+     */
+    private final CacheManager remoteCacheManager;
+
+    /**
+     * 缓存消息发布器，用于跨实例同步
+     */
     private final CacheMessagePublisher messagePublisher;
+
+    /**
+     * Redisson 客户端，用于分布式锁等操作
+     */
     private final RedissonClient redissonClient;
+
+    /**
+     * 二级缓存配置属性
+     */
     private final TieredCacheProperties properties;
 
+    /**
+     * 缓存实例映射表，key 为缓存名称
+     */
     private final Map<String, TieredCache> cacheMap = new ConcurrentHashMap<>();
+
+    /**
+     * 预定义的缓存名称集合
+     */
     private final Collection<String> predefinedCacheNames;
+
+    /**
+     * 是否支持动态创建缓存
+     */
     private final boolean dynamic;
 
     /**
@@ -78,6 +104,15 @@ public class TieredCacheManager implements CacheManager {
         }
     }
 
+    /**
+     * 获取指定名称的缓存
+     * <p>
+     * 动态模式下，如果缓存不存在会自动创建；
+     * 非动态模式下，只返回预定义的缓存。
+     *
+     * @param name 缓存名称
+     * @return 缓存实例，非动态模式下缓存不存在时返回 null
+     */
     @Override
     public org.springframework.cache.Cache getCache(@NonNull String name) {
         TieredCache cache = this.cacheMap.get(name);
@@ -95,6 +130,11 @@ public class TieredCacheManager implements CacheManager {
         return this.cacheMap.computeIfAbsent(name, this::createTieredCache);
     }
 
+    /**
+     * 获取所有缓存名称
+     *
+     * @return 缓存名称集合（不可修改）
+     */
     @NonNull
     @Override
     public Collection<String> getCacheNames() {
