@@ -156,10 +156,10 @@ public class CacheConfig {
                                         String cacheName,
                                         TieredCacheProperties properties,
                                         Duration defaultTtl) {
-        if (!configMap.containsKey(cacheName)) {
+        configMap.computeIfAbsent(cacheName, k -> {
             long ttlMs = randomizeTtl(defaultTtl.toMillis(), properties.getRemote().getTtlRandomFactor());
-            configMap.put(cacheName, new org.redisson.spring.cache.CacheConfig(ttlMs, 0));
-        }
+            return new org.redisson.spring.cache.CacheConfig(ttlMs, 0);
+        });
     }
 
     /**
