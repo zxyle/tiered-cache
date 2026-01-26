@@ -67,8 +67,11 @@ public class CacheConfig {
     public TieredCacheManager tieredCacheManager(RedissonClient redissonClient,
                                                   CacheMessagePublisher messagePublisher,
                                                   TieredCacheProperties properties) {
+        // 创建支持 Java 8 时间类型的 Codec
+        JsonJacksonCodec codec = createSafeCodec();
+
         // L2缓存：Redis分布式缓存（带随机过期时间防雪崩）
-        RedissonSpringCacheManager redisCacheManager = createRedisCacheManager(redissonClient, properties);
+        RedissonSpringCacheManager redisCacheManager = createRedisCacheManager(redissonClient, properties, codec);
 
         // 预定义的缓存名称（可选）
         List<String> predefinedCacheNames = List.of(
@@ -82,7 +85,8 @@ public class CacheConfig {
                 messagePublisher,
                 redissonClient,
                 properties,
-                predefinedCacheNames
+                predefinedCacheNames,
+                codec
         );
     }
 
@@ -94,7 +98,7 @@ public class CacheConfig {
     @Bean(CacheManagers.REDIS)
     public CacheManager redisOnlyCacheManager(RedissonClient redissonClient,
                                                TieredCacheProperties properties) {
-        return createRedisCacheManager(redissonClient, properties);
+        return createRedisCacheManager(redissonClient, properties, createSafeCodec());
     }
 
     /**
@@ -115,9 +119,14 @@ public class CacheConfig {
     /**
      * 创建Redis缓存管理器
      * 根据配置为每个缓存设置不同的 TTL，并添加随机偏移防雪崩
+     *
+     * @param redissonClient Redisson 客户端
+     * @param properties     缓存配置属性
+     * @param codec          序列化编解码器
      */
     private RedissonSpringCacheManager createRedisCacheManager(RedissonClient redissonClient,
-                                                                TieredCacheProperties properties) {
+                                                                TieredCacheProperties properties,
+                                                                JsonJacksonCodec codec) {
         Map<String, org.redisson.spring.cache.CacheConfig> configMap = new HashMap<>();
 
         // 为配置的缓存设置 TTL
@@ -142,7 +151,7 @@ public class CacheConfig {
         DynamicTtlRedissonCacheManager cacheManager = new DynamicTtlRedissonCacheManager(
                 redissonClient, configMap, properties);
         // 使用支持 Java 8 时间类型的 Codec
-        cacheManager.setCodec(createSafeCodec());
+        cacheManager.setCodec(codec);
         // 允许存储null值占位符，用于解决缓存穿透
         cacheManager.setAllowNullValues(true);
 

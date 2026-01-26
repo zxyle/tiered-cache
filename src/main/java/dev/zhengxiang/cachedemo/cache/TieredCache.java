@@ -9,6 +9,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RMapCache;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.Codec;
 import org.springframework.cache.support.SimpleValueWrapper;
 import org.springframework.lang.NonNull;
 
@@ -56,19 +57,22 @@ public class TieredCache implements org.springframework.cache.Cache {
     private final RedissonClient redissonClient;
     private final TieredCacheProperties properties;
     private final CacheStrategy strategy;                      // 当前缓存的策略
+    private final Codec codec;                                 // 序列化编解码器
 
     public TieredCache(String name,
                        Cache<Object, Object> localCache,
                        org.springframework.cache.Cache remoteCache,
                        CacheMessagePublisher messagePublisher,
                        RedissonClient redissonClient,
-                       TieredCacheProperties properties) {
+                       TieredCacheProperties properties,
+                       Codec codec) {
         this.name = name;
         this.localCache = localCache;
         this.remoteCache = remoteCache;
         this.messagePublisher = messagePublisher;
         this.redissonClient = redissonClient;
         this.properties = properties;
+        this.codec = codec;
         // 根据 cacheName 获取对应策略
         this.strategy = properties.getEffectiveStrategy(name);
 
@@ -298,7 +302,7 @@ public class TieredCache implements org.springframework.cache.Cache {
      * @param isNullValue 是否为 null 值占位符
      */
     private void putToRemoteCache(String key, Object value, boolean isNullValue) {
-        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name);
+        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name, codec);
 
         long ttlMs;
         if (isNullValue) {
@@ -383,7 +387,7 @@ public class TieredCache implements org.springframework.cache.Cache {
         Object toCache = isNullValue ? NULL_VALUE : value;
 
         // 使用 Redisson 原子操作写入 L2
-        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name);
+        RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name, codec);
         long ttlMs = isNullValue
                 ? properties.getRemote().getNullValueTtl().toMillis()
                 : randomizeTtl(strategy.getRemoteTtl().toMillis());

@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import dev.zhengxiang.cachedemo.cache.TieredCacheProperties.CacheStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.Codec;
 import org.springframework.cache.CacheManager;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
@@ -46,6 +47,11 @@ public class TieredCacheManager implements CacheManager {
     private final TieredCacheProperties properties;
 
     /**
+     * 序列化编解码器，用于 Redis 数据序列化
+     */
+    private final Codec codec;
+
+    /**
      * 缓存实例映射表，key 为缓存名称
      */
     private final Map<String, TieredCache> cacheMap = new ConcurrentHashMap<>();
@@ -66,8 +72,9 @@ public class TieredCacheManager implements CacheManager {
     public TieredCacheManager(CacheManager remoteCacheManager,
                               CacheMessagePublisher messagePublisher,
                               RedissonClient redissonClient,
-                              TieredCacheProperties properties) {
-        this(remoteCacheManager, messagePublisher, redissonClient, properties, null);
+                              TieredCacheProperties properties,
+                              Codec codec) {
+        this(remoteCacheManager, messagePublisher, redissonClient, properties, null, codec);
     }
 
     /**
@@ -78,16 +85,19 @@ public class TieredCacheManager implements CacheManager {
      * @param redissonClient       Redisson 客户端
      * @param properties           配置属性
      * @param predefinedCacheNames 预定义的缓存名称列表，为 null 时支持动态创建
+     * @param codec                序列化编解码器
      */
     public TieredCacheManager(CacheManager remoteCacheManager,
                               CacheMessagePublisher messagePublisher,
                               RedissonClient redissonClient,
                               TieredCacheProperties properties,
-                              @Nullable Collection<String> predefinedCacheNames) {
+                              @Nullable Collection<String> predefinedCacheNames,
+                              Codec codec) {
         this.remoteCacheManager = remoteCacheManager;
         this.messagePublisher = messagePublisher;
         this.redissonClient = redissonClient;
         this.properties = properties;
+        this.codec = codec;
 
         if (predefinedCacheNames != null && !predefinedCacheNames.isEmpty()) {
             this.predefinedCacheNames = Collections.unmodifiableCollection(predefinedCacheNames);
@@ -165,7 +175,7 @@ public class TieredCacheManager implements CacheManager {
                 name, strategy.getLocalMaxSize(), strategy.getLocalTtl(),
                 strategy.getRemoteTtl(), strategy.getFallbackStrategy(), strategy.getClearMode());
 
-        return new TieredCache(name, localCache, remoteCache, messagePublisher, redissonClient, properties);
+        return new TieredCache(name, localCache, remoteCache, messagePublisher, redissonClient, properties, codec);
     }
 
     /**
