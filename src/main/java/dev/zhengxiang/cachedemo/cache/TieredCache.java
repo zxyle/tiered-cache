@@ -348,6 +348,16 @@ public class TieredCache implements org.springframework.cache.Cache {
      * <p>
      * 写入顺序：L2(Redis) -> L1(Caffeine) -> 广播通知
      * 支持缓存 null 值（使用空值占位符）
+     * <p>
+     * 【已知问题】当使用 @Cacheable(sync=false) 默认模式时，Spring Cache 的执行流程是：
+     * 1. 调用 get(key) 检查缓存
+     * 2. 缓存未命中时调用业务方法
+     * 3. 调用 put(key, result) 存储结果
+     * 这会导致首次加载数据时也发送缓存失效消息，虽然此时其他实例并没有该缓存。
+     * <p>
+     * 【解决方案】
+     * - 方案一：使用 @Cacheable(sync=true)，Spring 会调用 get(key, valueLoader) 方法，内部处理加载逻辑，不会调用 put()
+     * - 方案二：在 put() 中检查 L1/L2 是否已有值，仅在更新场景下发送通知
      *
      * @param key   缓存键
      * @param value 缓存值，可以为 null
