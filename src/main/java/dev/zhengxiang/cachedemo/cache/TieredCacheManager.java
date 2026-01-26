@@ -67,17 +67,6 @@ public class TieredCacheManager implements CacheManager {
     private final boolean dynamic;
 
     /**
-     * 创建支持动态缓存名称的二级缓存管理器
-     */
-    public TieredCacheManager(CacheManager remoteCacheManager,
-                              CacheMessagePublisher messagePublisher,
-                              RedissonClient redissonClient,
-                              TieredCacheProperties properties,
-                              Codec codec) {
-        this(remoteCacheManager, messagePublisher, redissonClient, properties, null, codec);
-    }
-
-    /**
      * 创建二级缓存管理器
      *
      * @param remoteCacheManager   远程缓存管理器（Redis）
@@ -205,10 +194,4 @@ public class TieredCacheManager implements CacheManager {
         return Collections.unmodifiableCollection(this.cacheMap.values());
     }
 
-    /**
-     * 获取配置属性
-     */
-    public TieredCacheProperties getProperties() {
-        return properties;
-    }
 }

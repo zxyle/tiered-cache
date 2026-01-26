@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -17,6 +18,7 @@ import java.util.UUID;
 @NoArgsConstructor
 public class CacheMessage implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /**

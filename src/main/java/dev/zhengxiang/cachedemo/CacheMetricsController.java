@@ -1,6 +1,8 @@
-package dev.zhengxiang.cachedemo.cache;
+package dev.zhengxiang.cachedemo;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import dev.zhengxiang.cachedemo.cache.TieredCache;
+import dev.zhengxiang.cachedemo.cache.TieredCacheManager;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
