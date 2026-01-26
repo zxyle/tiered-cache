@@ -2,6 +2,13 @@ spring:
   application:
     name: cache-demo
 
+  # 数据源配置
+  datasource:
+    url: jdbc:mysql://localhost:3306/app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
   # Redis 配置
   data:
     redis:
@@ -9,6 +16,18 @@ spring:
       port: 6379
       database: 0
       timeout: 2000ms
+
+# MyBatis Plus 配置
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_uuid
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
 
 # 缓存日志级别
 logging:

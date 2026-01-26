@@ -1,7 +1,9 @@
 package dev.zhengxiang.cachedemo;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 用户控制器
@@ -10,10 +12,19 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/user")
+@RequiredArgsConstructor
 public class UserController {
 
-    @Autowired
-    UserService userService;
+    private final UserService userService;
+
+    /**
+     * 查询所有用户
+     * GET /user
+     */
+    @GetMapping
+    public List<User> getAllUsers() {
+        return userService.getAllUsers();
+    }
 
     /**
      * 查询用户 - 测试二级缓存
@@ -22,6 +33,15 @@ public class UserController {
     @GetMapping("/{id}")
     public User getUser(@PathVariable String id) {
         return userService.getUser(id);
+    }
+
+    /**
+     * 创建用户
+     * POST /user
+     */
+    @PostMapping
+    public User createUser(@RequestBody User user) {
+        return userService.createUser(user);
     }
 
     /**

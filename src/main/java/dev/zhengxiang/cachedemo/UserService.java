@@ -2,10 +2,14 @@ package dev.zhengxiang.cachedemo;
 
 import dev.zhengxiang.cachedemo.cache.CacheManagers;
 import dev.zhengxiang.cachedemo.cache.CacheNames;
+import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * 用户服务类
@@ -16,7 +20,10 @@ import org.springframework.stereotype.Service;
  * - 仅本地缓存：heavyCalculation
  */
 @Service
+@RequiredArgsConstructor
 public class UserService {
+
+    private final UserMapper userMapper;
 
     /**
      * 用户信息 - 使用二级缓存（默认）
@@ -24,11 +31,25 @@ public class UserService {
      */
     @Cacheable(cacheNames = CacheNames.USER_INFO, key = "'user_' + #id")
     public User getUser(String id) {
-        User user = new User();
-        user.setId(id);
-        user.setName("zhengxiang");
-        user.setEmail("zhengxiang@example.com");
         System.out.println("查询数据库 - 用户ID: " + id + " (二级缓存)");
+        return userMapper.selectById(id);
+    }
+
+    /**
+     * 查询所有用户
+     */
+    public List<User> getAllUsers() {
+        System.out.println("查询所有用户 - 无缓存");
+        return userMapper.selectList(null);
+    }
+
+    /**
+     * 创建用户
+     */
+    @Transactional
+    public User createUser(User user) {
+        System.out.println("创建用户 - 用户名: " + user.getName());
+        userMapper.insert(user);
         return user;
     }
 
@@ -37,9 +58,10 @@ public class UserService {
      * 每次调用都会执行方法，并将返回值更新到缓存中
      */
     @CachePut(cacheNames = CacheNames.USER_INFO, key = "'user_' + #user.id")
+    @Transactional
     public User updateUser(User user) {
-        // 模拟更新数据库
         System.out.println("更新数据库 - 用户ID: " + user.getId() + ", 用户名: " + user.getName() + " (更新缓存)");
+        userMapper.updateById(user);
         return user;
     }
 
@@ -48,9 +70,10 @@ public class UserService {
      * 删除用户后清除对应的缓存数据
      */
     @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "'user_' + #id")
+    @Transactional
     public void deleteUser(String id) {
-        // 模拟删除数据库记录
         System.out.println("删除数据库 - 用户ID: " + id + " (清除缓存)");
+        userMapper.deleteById(id);
     }
 
     /**
