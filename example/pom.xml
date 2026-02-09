@@ -5,8 +5,8 @@
 
     <parent>
         <groupId>dev.zhengxiang</groupId>
-        <artifactId>cache-demo</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <artifactId>tiered-cache</artifactId>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
