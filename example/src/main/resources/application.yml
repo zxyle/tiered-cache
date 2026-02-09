@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: cache-demo
+  datasource:
+    url: jdbc:mysql://localhost:3306/app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 2000ms
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_uuid
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+logging:
+  level:
+    org.springframework.cache: DEBUG
+    dev.zhengxiang.tieredcache: DEBUG
+    dev.zhengxiang.cachedemo: DEBUG
+
+# 二级缓存配置（由 tiered-cache-spring-boot-starter 提供）
+cache:
+  tiered:
+    enabled: true
+    cache-prefix: "app:cache:"
+    # 预定义缓存名称，为空则仅动态创建
+    cache-names:
+      - user_info
+      - sys_config
+      - short_lived
+    default-fallback-strategy: THROW
+    default-clear-mode: SAFE
+    local:
+      maximum-size: 1000
+      expire-after-write: 5m
+    remote:
+      default-ttl: 1h
+      null-value-ttl: 1m
+      ttl-random-factor: 0.1
+      lock-wait-time-ms: 500
+      cache-topic-prefix: "app:cache:topic:"
+    caches:
+      user_info:
+        remote-ttl: 24h
+        local-ttl: 5m
+        fallback-strategy: THROW
+        clear-mode: FULL
+      sys_config:
+        remote-ttl: 1h
+        local-ttl: 10m
+        fallback-strategy: THROW
+        clear-mode: FULL
+      short_lived:
+        remote-ttl: 5m
+        local-ttl: 1m
