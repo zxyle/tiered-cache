@@ -185,18 +185,9 @@ public class TieredCache implements org.springframework.cache.Cache {
         RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name, codec);
         long ttlMs = isNullValue
                 ? properties.getRemote().getNullValueTtl().toMillis()
-                : randomizeTtl(strategy.getRemoteTtl().toMillis());
+                : TieredCacheUtils.randomizeTtl(strategy.getRemoteTtl().toMillis(), properties.getRemote().getTtlRandomFactor());
         mapCache.put(key, value, ttlMs, TimeUnit.MILLISECONDS);
         log.debug("写入 L2: cache={}, key={}, isNull={}, ttl={}ms", name, key, isNullValue, ttlMs);
-    }
-
-    private long randomizeTtl(long baseTtlMs) {
-        double randomFactor = properties.getRemote().getTtlRandomFactor();
-        if (baseTtlMs <= 0 || randomFactor <= 0) {
-            return baseTtlMs;
-        }
-        long offset = (long) (baseTtlMs * randomFactor);
-        return baseTtlMs + java.util.concurrent.ThreadLocalRandom.current().nextLong(-offset, offset + 1);
     }
 
     private ValueWrapper wrapValue(Object value) {
@@ -228,7 +219,7 @@ public class TieredCache implements org.springframework.cache.Cache {
         RMapCache<Object, Object> mapCache = redissonClient.getMapCache(name, codec);
         long ttlMs = isNullValue
                 ? properties.getRemote().getNullValueTtl().toMillis()
-                : randomizeTtl(strategy.getRemoteTtl().toMillis());
+                : TieredCacheUtils.randomizeTtl(strategy.getRemoteTtl().toMillis(), properties.getRemote().getTtlRandomFactor());
         Object existing = mapCache.putIfAbsent(keyStr, toCache, ttlMs, TimeUnit.MILLISECONDS);
         if (existing != null) {
             log.debug("putIfAbsent L2 已存在: cache={}, key={}", name, keyStr);

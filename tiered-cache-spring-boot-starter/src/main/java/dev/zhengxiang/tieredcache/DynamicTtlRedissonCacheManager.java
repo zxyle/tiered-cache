@@ -9,7 +9,6 @@ import org.springframework.lang.NonNull;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 扩展 RedissonSpringCacheManager，支持动态创建的缓存使用默认 TTL
@@ -31,7 +30,7 @@ public class DynamicTtlRedissonCacheManager extends RedissonSpringCacheManager {
     @Override
     public Cache getCache(@NonNull String name) {
         if (!configMap.containsKey(name)) {
-            long defaultTtlMs = randomizeTtl(
+            long defaultTtlMs = TieredCacheUtils.randomizeTtl(
                     properties.getRemote().getDefaultTtl().toMillis(),
                     properties.getRemote().getTtlRandomFactor()
             );
@@ -43,11 +42,4 @@ public class DynamicTtlRedissonCacheManager extends RedissonSpringCacheManager {
         return super.getCache(name);
     }
 
-    private long randomizeTtl(long baseTtlMs, double randomFactor) {
-        if (baseTtlMs <= 0 || randomFactor <= 0) {
-            return baseTtlMs;
-        }
-        long offset = (long) (baseTtlMs * randomFactor);
-        return baseTtlMs + ThreadLocalRandom.current().nextLong(-offset, offset + 1);
-    }
 }

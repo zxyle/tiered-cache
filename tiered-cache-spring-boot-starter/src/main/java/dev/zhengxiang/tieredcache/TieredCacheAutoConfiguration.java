@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 二级缓存自动配置
@@ -101,13 +100,13 @@ public class TieredCacheAutoConfiguration {
             String cacheName = entry.getKey();
             CacheStrategy strategy = entry.getValue();
             Duration ttl = strategy.getRemoteTtl() != null ? strategy.getRemoteTtl() : properties.getRemote().getDefaultTtl();
-            long ttlMs = randomizeTtl(ttl.toMillis(), properties.getRemote().getTtlRandomFactor());
+            long ttlMs = TieredCacheUtils.randomizeTtl(ttl.toMillis(), properties.getRemote().getTtlRandomFactor());
             configMap.put(cacheName, new CacheConfig(ttlMs, 0));
         }
 
         for (String cacheName : properties.getCacheNames()) {
             configMap.computeIfAbsent(cacheName, k -> {
-                long ttlMs = randomizeTtl(properties.getRemote().getDefaultTtl().toMillis(),
+                long ttlMs = TieredCacheUtils.randomizeTtl(properties.getRemote().getDefaultTtl().toMillis(),
                         properties.getRemote().getTtlRandomFactor());
                 return new CacheConfig(ttlMs, 0);
             });
@@ -120,11 +119,4 @@ public class TieredCacheAutoConfiguration {
         return cacheManager;
     }
 
-    private static long randomizeTtl(long baseTtlMs, double randomFactor) {
-        if (baseTtlMs <= 0 || randomFactor <= 0) {
-            return baseTtlMs;
-        }
-        long offset = (long) (baseTtlMs * randomFactor);
-        return baseTtlMs + ThreadLocalRandom.current().nextLong(-offset, offset + 1);
-    }
 }
