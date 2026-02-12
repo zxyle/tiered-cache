@@ -8,6 +8,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import dev.zhengxiang.tieredcache.TieredCacheProperties.CacheStrategy;
 import org.redisson.api.RedissonClient;
 import org.redisson.codec.JsonJacksonCodec;
+import org.redisson.spring.cache.CacheConfig;
 import org.redisson.spring.cache.RedissonSpringCacheManager;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -94,21 +95,21 @@ public class TieredCacheAutoConfiguration {
     private RedissonSpringCacheManager createRedisCacheManager(RedissonClient redissonClient,
                                                                 TieredCacheProperties properties,
                                                                 JsonJacksonCodec codec) {
-        Map<String, org.redisson.spring.cache.CacheConfig> configMap = new HashMap<>();
+        Map<String, CacheConfig> configMap = new HashMap<>();
 
         for (Map.Entry<String, CacheStrategy> entry : properties.getCaches().entrySet()) {
             String cacheName = entry.getKey();
             CacheStrategy strategy = entry.getValue();
             Duration ttl = strategy.getRemoteTtl() != null ? strategy.getRemoteTtl() : properties.getRemote().getDefaultTtl();
             long ttlMs = randomizeTtl(ttl.toMillis(), properties.getRemote().getTtlRandomFactor());
-            configMap.put(cacheName, new org.redisson.spring.cache.CacheConfig(ttlMs, 0));
+            configMap.put(cacheName, new CacheConfig(ttlMs, 0));
         }
 
         for (String cacheName : properties.getCacheNames()) {
             configMap.computeIfAbsent(cacheName, k -> {
                 long ttlMs = randomizeTtl(properties.getRemote().getDefaultTtl().toMillis(),
                         properties.getRemote().getTtlRandomFactor());
-                return new org.redisson.spring.cache.CacheConfig(ttlMs, 0);
+                return new CacheConfig(ttlMs, 0);
             });
         }
 
