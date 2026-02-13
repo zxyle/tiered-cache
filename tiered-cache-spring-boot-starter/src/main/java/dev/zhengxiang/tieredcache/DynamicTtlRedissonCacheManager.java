@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 扩展 RedissonSpringCacheManager，支持动态创建的缓存使用默认 TTL
+ * Extends RedissonSpringCacheManager to support default TTL for dynamically created caches.
  */
 @Slf4j
 public class DynamicTtlRedissonCacheManager extends RedissonSpringCacheManager {
@@ -37,7 +37,7 @@ public class DynamicTtlRedissonCacheManager extends RedissonSpringCacheManager {
             CacheConfig defaultConfig = new CacheConfig(defaultTtlMs, 0);
             configMap.put(name, defaultConfig);
             setConfig(configMap);
-            log.info("为动态缓存设置默认 TTL: name={}, ttl={}ms", name, defaultTtlMs);
+            log.info("Setting default TTL for dynamic cache: name={}, ttl={}ms", name, defaultTtlMs);
         }
         return super.getCache(name);
     }

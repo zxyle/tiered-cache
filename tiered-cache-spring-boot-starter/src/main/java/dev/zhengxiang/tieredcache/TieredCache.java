@@ -17,7 +17,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 二级缓存实现：L1(Caffeine) + L2(Redis)
+ * Tiered cache implementation: L1 (Caffeine) + L2 (Redis).
  */
 @Slf4j
 public class TieredCache implements org.springframework.cache.Cache {
@@ -51,7 +51,7 @@ public class TieredCache implements org.springframework.cache.Cache {
         this.codec = codec;
         this.strategy = properties.getEffectiveStrategy(name);
 
-        log.info("创建二级缓存: name={}, fallback={}, clearMode={}, localTtl={}, remoteTtl={}, nullValueTtl={}",
+        log.info("Creating tiered cache: name={}, fallback={}, clearMode={}, localTtl={}, remoteTtl={}, nullValueTtl={}",
                 name, strategy.getFallbackStrategy(), strategy.getClearMode(),
                 strategy.getLocalTtl(), strategy.getRemoteTtl(),
                 properties.getRemote().getNullValueTtl());
@@ -74,19 +74,19 @@ public class TieredCache implements org.springframework.cache.Cache {
         String keyStr = key.toString();
         Object value = localCache.getIfPresent(keyStr);
         if (value != null) {
-            log.debug("L1 命中: cache={}, key={}", name, keyStr);
+            log.debug("L1 hit: cache={}, key={}", name, keyStr);
             return wrapValue(value);
         }
         ValueWrapper wrapper = remoteCache.get(keyStr);
         if (wrapper != null) {
-            log.debug("L2 命中: cache={}, key={}", name, keyStr);
+            log.debug("L2 hit: cache={}, key={}", name, keyStr);
             Object remoteValue = wrapper.get();
             if (remoteValue != null) {
                 localCache.put(keyStr, remoteValue);
             }
             return wrapper;
         }
-        log.debug("缓存未命中: cache={}, key={}", name, keyStr);
+        log.debug("Cache miss: cache={}, key={}", name, keyStr);
         return null;
     }
 
@@ -112,10 +112,10 @@ public class TieredCache implements org.springframework.cache.Cache {
         Object value = localCache.get(keyStr, k -> {
             ValueWrapper wrapper = remoteCache.get(keyStr);
             if (wrapper != null) {
-                log.debug("L2 命中: cache={}, key={}", name, keyStr);
+                log.debug("L2 hit: cache={}, key={}", name, keyStr);
                 return wrapper.get();
             }
-            log.debug("L1/L2 都未命中，加载数据: cache={}, key={}", name, keyStr);
+            log.debug("L1/L2 miss, loading value: cache={}, key={}", name, keyStr);
             return loadWithLockInternal(keyStr, valueLoader);
         });
         return unwrapNullValue((T) value);
@@ -131,10 +131,10 @@ public class TieredCache implements org.springframework.cache.Cache {
                 try {
                     ValueWrapper wrapper = remoteCache.get(keyStr);
                     if (wrapper != null) {
-                        log.debug("获取锁后 L2 命中: cache={}, key={}", name, keyStr);
+                        log.debug("L2 hit after lock acquired: cache={}, key={}", name, keyStr);
                         return wrapper.get();
                     }
-                    log.debug("加载数据: cache={}, key={}", name, keyStr);
+                    log.debug("Loading value: cache={}, key={}", name, keyStr);
                     T result = valueLoader.call();
                     Object toCache = (result == null) ? NULL_VALUE : result;
                     putToRemoteCache(keyStr, toCache, result == null);
@@ -163,15 +163,15 @@ public class TieredCache implements org.springframework.cache.Cache {
             return wrapper.get();
         }
         if (strategy.getFallbackStrategy() == FallbackStrategy.THROW) {
-            log.warn("获取锁失败，抛出异常: cache={}, key={}", name, keyStr);
-            throw new CacheLockAcquireException("当前访问人数过多，请稍后重试");
-        } else {
-            log.warn("获取锁失败，降级查询数据源: cache={}, key={}", name, keyStr);
-            T result = valueLoader.call();
-            Object toCache = (result == null) ? NULL_VALUE : result;
-            putToRemoteCache(keyStr, toCache, result == null);
-            return toCache;
+            log.warn("Lock acquisition failed, throwing: cache={}, key={}", name, keyStr);
+            throw new CacheLockAcquireException("Too many concurrent requests, please try again later");
         }
+
+        log.warn("Lock acquisition failed, falling back to data source: cache={}, key={}", name, keyStr);
+        T result = valueLoader.call();
+        Object toCache = (result == null) ? NULL_VALUE : result;
+        putToRemoteCache(keyStr, toCache, result == null);
+        return toCache;
     }
 
     private <T> T unwrapNullValue(T value) {
@@ -187,7 +187,7 @@ public class TieredCache implements org.springframework.cache.Cache {
                 ? properties.getRemote().getNullValueTtl().toMillis()
                 : TieredCacheUtils.randomizeTtl(strategy.getRemoteTtl().toMillis(), properties.getRemote().getTtlRandomFactor());
         mapCache.put(key, value, ttlMs, TimeUnit.MILLISECONDS);
-        log.debug("写入 L2: cache={}, key={}, isNull={}, ttl={}ms", name, key, isNullValue, ttlMs);
+        log.debug("Writing to L2: cache={}, key={}, isNull={}, ttl={}ms", name, key, isNullValue, ttlMs);
     }
 
     private ValueWrapper wrapValue(Object value) {
@@ -205,7 +205,7 @@ public class TieredCache implements org.springframework.cache.Cache {
         String keyStr = key.toString();
         boolean isNullValue = (value == null);
         Object toCache = isNullValue ? NULL_VALUE : value;
-        log.debug("写入缓存: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
+        log.debug("Writing to cache: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
         putToRemoteCache(keyStr, toCache, isNullValue);
         localCache.put(keyStr, toCache);
         publishInvalidateMessage(keyStr);
@@ -222,11 +222,11 @@ public class TieredCache implements org.springframework.cache.Cache {
                 : TieredCacheUtils.randomizeTtl(strategy.getRemoteTtl().toMillis(), properties.getRemote().getTtlRandomFactor());
         Object existing = mapCache.putIfAbsent(keyStr, toCache, ttlMs, TimeUnit.MILLISECONDS);
         if (existing != null) {
-            log.debug("putIfAbsent L2 已存在: cache={}, key={}", name, keyStr);
+            log.debug("putIfAbsent L2 already present: cache={}, key={}", name, keyStr);
             localCache.put(keyStr, existing);
             return wrapValue(existing);
         }
-        log.debug("putIfAbsent 写入成功: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
+        log.debug("putIfAbsent written: cache={}, key={}, isNull={}", name, keyStr, isNullValue);
         localCache.put(keyStr, toCache);
         publishInvalidateMessage(keyStr);
         return null;
@@ -235,7 +235,7 @@ public class TieredCache implements org.springframework.cache.Cache {
     @Override
     public void evict(@NonNull Object key) {
         String keyStr = key.toString();
-        log.debug("删除缓存: cache={}, key={}", name, keyStr);
+        log.debug("Evicting cache: cache={}, key={}", name, keyStr);
         remoteCache.evict(keyStr);
         localCache.invalidate(keyStr);
         publishInvalidateMessage(keyStr);
@@ -255,7 +255,7 @@ public class TieredCache implements org.springframework.cache.Cache {
 
     @Override
     public void clear() {
-        log.debug("清空缓存: cache={}, mode={}", name, strategy.getClearMode());
+        log.debug("Clearing cache: cache={}, mode={}", name, strategy.getClearMode());
         if (strategy.getClearMode() == ClearMode.FULL) {
             clearRemoteCache();
         }
@@ -264,7 +264,7 @@ public class TieredCache implements org.springframework.cache.Cache {
     }
 
     private void clearRemoteCache() {
-        log.info("清除远程缓存: cacheName={}", name);
+        log.info("Clearing remote cache: cacheName={}", name);
         if (supportsUnlink == null) {
             synchronized (TieredCache.class) {
                 if (supportsUnlink == null) {
@@ -274,10 +274,10 @@ public class TieredCache implements org.springframework.cache.Cache {
         }
         if (supportsUnlink) {
             redissonClient.getKeys().unlink(name);
-            log.info("远程缓存已清理(UNLINK): {}", name);
+            log.info("Remote cache cleared (UNLINK): {}", name);
         } else {
             redissonClient.getKeys().delete(name);
-            log.info("远程缓存已清理(DEL): {}", name);
+            log.info("Remote cache cleared (DEL): {}", name);
         }
     }
 
@@ -290,10 +290,10 @@ public class TieredCache implements org.springframework.cache.Cache {
             );
             int majorVersion = parseRedisMajorVersion(serverInfo);
             boolean supports = majorVersion >= 4;
-            log.info("Redis 版本检测完成: majorVersion={}, supportsUnlink={}", majorVersion, supports);
+            log.info("Redis version detection done: majorVersion={}, supportsUnlink={}", majorVersion, supports);
             return supports;
         } catch (Exception e) {
-            log.warn("检测 Redis 版本失败，默认使用 DEL 命令: {}", e.getMessage());
+            log.warn("Redis version detection failed, defaulting to DEL: {}", e.getMessage());
             return false;
         }
     }
@@ -311,7 +311,7 @@ public class TieredCache implements org.springframework.cache.Cache {
                 try {
                     return Integer.parseInt(majorStr);
                 } catch (NumberFormatException e) {
-                    log.warn("解析 Redis 版本号失败: {}", version);
+                    log.warn("Failed to parse Redis version: {}", version);
                     return 0;
                 }
             }
@@ -327,12 +327,12 @@ public class TieredCache implements org.springframework.cache.Cache {
 
     public void evictLocal(Object key) {
         String keyStr = key.toString();
-        log.debug("收到通知清除本地缓存: cache={}, key={}", name, keyStr);
+        log.debug("Received evict notification for local cache: cache={}, key={}", name, keyStr);
         localCache.invalidate(keyStr);
     }
 
     public void clearLocal() {
-        log.debug("收到通知清空本地缓存: cache={}", name);
+        log.debug("Received clear notification for local cache: cache={}", name);
         localCache.invalidateAll();
     }
 

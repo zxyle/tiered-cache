@@ -1,25 +1,28 @@
 package dev.zhengxiang.tieredcache;
 
 /**
- * 缓存管理器名称常量
+ * Cache manager name constants.
  */
 public final class CacheManagers {
 
     /**
-     * 默认二级缓存管理器（不需要显式指定）
+     * Default tiered cache manager (no need to specify explicitly).
      */
     public static final String DEFAULT = "tiered";
 
     /**
-     * 仅Redis缓存管理器
+     * Redis-only cache manager.
      */
     public static final String REDIS = "redis";
 
     /**
-     * 仅本地缓存管理器
+     * Local-only cache manager.
      */
     public static final String LOCAL = "local";
 
+    /**
+     * Private constructor. instances are not allowed.
+     */
     private CacheManagers() {
     }
 }

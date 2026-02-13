@@ -35,7 +35,7 @@ public class CacheMetricsController {
     public CacheMetrics getCacheMetrics(@PathVariable String cacheName) {
         TieredCache cache = tieredCacheManager.getTieredCache(cacheName);
         if (cache == null) {
-            throw new IllegalArgumentException("缓存不存在: " + cacheName);
+            throw new IllegalArgumentException("Cache does not exist: " + cacheName);
         }
         return buildMetrics(cache);
     }

@@ -15,7 +15,7 @@
     <version>${revision}</version>
     <packaging>pom</packaging>
     <name>tiered-cache</name>
-    <description>二级缓存多模块项目：Starter + Example</description>
+    <description>Tiered cache multi-module project: Starter + Example</description>
     <url>https://github.com/zxyle/tiered-cache</url>
 
     <modules>

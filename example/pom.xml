@@ -12,7 +12,7 @@
 
     <artifactId>example</artifactId>
     <name>example</name>
-    <description>二级缓存示例应用</description>
+    <description>Tiered cache example application</description>
 
     <dependencies>
         <dependency>

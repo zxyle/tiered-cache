@@ -10,55 +10,55 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 二级缓存配置属性
- * 支持按 cacheName 配置不同的一致性/可用性策略
+ * Configuration properties for tiered cache.
+ * Supports per-cacheName consistency and availability strategies.
  */
 @Data
 @ConfigurationProperties(prefix = "cache.tiered")
 public class TieredCacheProperties {
 
     /**
-     * 是否启用二级缓存自动配置
+     * Whether to enable tiered cache auto-configuration.
      */
     private boolean enabled = true;
 
     /**
-     * 缓存 key 前缀
+     * Cache key prefix.
      */
     private String cachePrefix = "cache:";
 
     /**
-     * 预定义缓存名称列表。为空或未配置时仅支持动态创建缓存。
+     * Predefined cache names. If empty or unset, only dynamic cache creation is supported.
      */
     private List<String> cacheNames = new ArrayList<>();
 
     /**
-     * 本地缓存配置
+     * Local cache configuration.
      */
     private LocalConfig local = new LocalConfig();
 
     /**
-     * 远程缓存配置
+     * Remote cache configuration.
      */
     private RemoteConfig remote = new RemoteConfig();
 
     /**
-     * 全局默认降级策略
+     * Global default fallback strategy.
      */
     private FallbackStrategy defaultFallbackStrategy = FallbackStrategy.THROW;
 
     /**
-     * 全局默认 clear 模式
+     * Global default clear mode.
      */
     private ClearMode defaultClearMode = ClearMode.SAFE;
 
     /**
-     * 按 cacheName 配置不同策略
+     * Per-cacheName strategy overrides.
      */
     private Map<String, CacheStrategy> caches = new HashMap<>();
 
     /**
-     * 获取预定义缓存名称（不可变）。为 null 或空时表示仅动态模式。
+     * Returns predefined cache names (immutable). Null or empty means dynamic-only mode.
      */
     public List<String> getCacheNames() {
         return cacheNames == null || cacheNames.isEmpty() ? List.of() : List.copyOf(cacheNames);

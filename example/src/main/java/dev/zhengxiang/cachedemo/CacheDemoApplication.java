@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * 二级缓存示例应用启动类
+ * Tiered cache example application entry point.
  */
 @SpringBootApplication
 @MapperScan("dev.zhengxiang.cachedemo")

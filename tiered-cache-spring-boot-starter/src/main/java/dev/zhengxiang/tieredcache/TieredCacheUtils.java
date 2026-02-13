@@ -3,7 +3,7 @@ package dev.zhengxiang.tieredcache;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 二级缓存通用工具方法
+ * Utility methods for tiered cache.
  */
 public final class TieredCacheUtils {
 
@@ -11,11 +11,11 @@ public final class TieredCacheUtils {
     }
 
     /**
-     * 在基准 TTL 上叠加随机偏移，避免大量 key 同时过期造成缓存雪崩。
+     * Applies a random offset to the base TTL to avoid cache stampede when many keys expire at once.
      *
-     * @param baseTtlMs   基准 TTL（毫秒）
-     * @param randomFactor 随机因子，取值 [0, 1]，例如 0.1 表示在 baseTtlMs 的 ±10% 范围内随机
-     * @return 随机化后的 TTL（毫秒），至少为 1，保证 Redis 写入有效
+     * @param baseTtlMs    base TTL in milliseconds
+     * @param randomFactor random factor in [0, 1]; e.g. 0.1 means ±10% of baseTtlMs
+     * @return randomized TTL in milliseconds, at least 1 so Redis writes remain valid
      */
     public static long randomizeTtl(long baseTtlMs, double randomFactor) {
         if (baseTtlMs <= 0 || randomFactor <= 0) {

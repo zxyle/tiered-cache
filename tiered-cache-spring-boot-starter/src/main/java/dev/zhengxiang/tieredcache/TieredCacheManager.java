@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 二级缓存管理器：管理 TieredCache 实例，支持预定义或动态创建
+ * Tiered cache manager: manages TieredCache instances with predefined or dynamic creation.
  */
 @Slf4j
 public class TieredCacheManager implements CacheManager {
@@ -53,11 +53,11 @@ public class TieredCacheManager implements CacheManager {
             for (String name : names) {
                 this.cacheMap.put(name, createTieredCache(name));
             }
-            log.info("TieredCacheManager 初始化完成，预定义缓存: {}", names);
+            log.info("TieredCacheManager initialized with predefined caches: {}", names);
         } else {
             this.predefinedCacheNames = Collections.emptySet();
             this.dynamic = true;
-            log.info("TieredCacheManager 初始化完成，支持动态创建缓存");
+            log.info("TieredCacheManager initialized with dynamic cache creation");
         }
     }
 
@@ -68,7 +68,7 @@ public class TieredCacheManager implements CacheManager {
             return cache;
         }
         if (!this.dynamic) {
-            log.warn("缓存不存在且不允许动态创建: {}", name);
+            log.warn("Cache does not exist and dynamic creation is disabled: {}", name);
             return null;
         }
         return this.cacheMap.computeIfAbsent(name, this::createTieredCache);
@@ -92,9 +92,9 @@ public class TieredCacheManager implements CacheManager {
                 .build();
         org.springframework.cache.Cache remoteCache = remoteCacheManager.getCache(name);
         if (remoteCache == null) {
-            log.warn("远程缓存创建失败: {}", name);
+            log.warn("Failed to create remote cache: {}", name);
         }
-        log.info("创建二级缓存: name={}, localMaxSize={}, localTtl={}, remoteTtl={}, fallback={}, clearMode={}",
+        log.info("Creating tiered cache: name={}, localMaxSize={}, localTtl={}, remoteTtl={}, fallback={}, clearMode={}",
                 name, strategy.getLocalMaxSize(), strategy.getLocalTtl(),
                 strategy.getRemoteTtl(), strategy.getFallbackStrategy(), strategy.getClearMode());
         return new TieredCache(name, localCache, remoteCache, messagePublisher, redissonClient, properties, codec);

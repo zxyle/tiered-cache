@@ -30,12 +30,12 @@ logging:
     dev.zhengxiang.tieredcache: DEBUG
     dev.zhengxiang.cachedemo: DEBUG
 
-# 二级缓存配置（由 tiered-cache-spring-boot-starter 提供）
+# Tiered cache configuration (provided by tiered-cache-spring-boot-starter)
 cache:
   tiered:
     enabled: true
     cache-prefix: "app:cache:"
-    # 预定义缓存名称，为空则仅动态创建
+    # Predefined cache names; if empty, only dynamic creation is supported
     cache-names:
       - user_info
       - sys_config

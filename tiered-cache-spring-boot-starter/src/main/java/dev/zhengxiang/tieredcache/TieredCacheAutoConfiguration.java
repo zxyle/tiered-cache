@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 二级缓存自动配置
+ * Tiered cache auto-configuration.
  */
 @EnableCaching
 @AutoConfiguration

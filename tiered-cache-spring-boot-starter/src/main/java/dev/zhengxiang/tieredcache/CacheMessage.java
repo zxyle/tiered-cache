@@ -11,7 +11,7 @@ import java.net.InetAddress;
 import java.util.UUID;
 
 /**
- * 缓存同步消息
+ * Cache synchronization message for local cache invalidation across instances.
  */
 @Data
 @Slf4j
@@ -38,11 +38,11 @@ public class CacheMessage implements Serializable {
             String host = InetAddress.getLocalHost().getHostName();
             String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
             String nodeId = host + ":" + pid;
-            log.info("生成节点ID: {}", nodeId);
+            log.info("Generated node ID: {}", nodeId);
             return nodeId;
         } catch (Exception e) {
             String fallbackId = UUID.randomUUID().toString().substring(0, 8);
-            log.warn("无法获取主机名，使用降级ID: {}", fallbackId, e);
+            log.warn("Could not resolve hostname, using fallback ID: {}", fallbackId, e);
             return fallbackId;
         }
     }

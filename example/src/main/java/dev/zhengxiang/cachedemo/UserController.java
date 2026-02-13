@@ -35,13 +35,13 @@ public class UserController {
     @DeleteMapping("/{id}")
     public String deleteUser(@PathVariable String id) {
         userService.deleteUser(id);
-        return "用户 " + id + " 删除成功，缓存已清除";
+        return "User " + id + " deleted successfully, cache cleared";
     }
 
     @DeleteMapping("/cache/all")
     public String clearAllUserCache() {
         userService.clearAllUserCache();
-        return "所有用户缓存已清除";
+        return "All user cache cleared";
     }
 
     @GetMapping("/lock/{resource}")

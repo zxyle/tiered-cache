@@ -1,8 +1,7 @@
 package dev.zhengxiang.tieredcache;
 
 /**
- * 缓存锁获取异常
- * 当获取分布式锁失败且降级策略为 THROW 时抛出
+ * Thrown when distributed lock acquisition fails and fallback strategy is THROW.
  */
 public class CacheLockAcquireException extends RuntimeException {
 

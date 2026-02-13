@@ -1,7 +1,7 @@
 package dev.zhengxiang.cachedemo;
 
 /**
- * 缓存名称常量（示例项目使用）
+ * Cache name constants (for example application).
  */
 public final class CacheNames {
 
